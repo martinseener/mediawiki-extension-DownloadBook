@@ -22,6 +22,9 @@
 
 namespace MediaWiki\DownloadBook;
 
+use RepoGroup;
+
+
 use DeferredUpdates;
 use FileBackend;
 use FormatJson;
@@ -38,6 +41,7 @@ use Title;
 use UploadStashException;
 use User;
 
+use WikiPage;
 class BookRenderingTask {
 	public const STATE_FAILED = 'failed';
 	public const STATE_FINISHED = 'finished';
@@ -76,7 +80,7 @@ class BookRenderingTask {
 	 * @return int Value of collection_id (to be returned to Extension:Collection).
 	 */
 	public static function createNew( array $metabook, $newFormat ) {
-		$dbw = MediaWikiServices::getInstance()->getDBLoadBalancer()->getConnection( DB_PRIMARY );
+		$dbw = MediaWikiServices::getInstance()->getDBLoadBalancer()->getConnection( DB_MASTER );
 		$dbw->insert( 'bookrenderingtask', [
 			'brt_timestamp' => $dbw->timestamp(),
 			'brt_state' => self::STATE_PENDING,
@@ -104,7 +108,7 @@ class BookRenderingTask {
 	 * @param string|null $newDisposition
 	 */
 	protected function changeState( $newState, $newStashKey = null, $newDisposition = null ) {
-		$dbw = MediaWikiServices::getInstance()->getDBLoadBalancer()->getConnection( DB_PRIMARY );
+		$dbw = MediaWikiServices::getInstance()->getDBLoadBalancer()->getConnection( DB_MASTER );
 		$dbw->update( 'bookrenderingtask',
 			[
 				'brt_state' => $newState,
@@ -126,7 +130,8 @@ class BookRenderingTask {
 			$this->logger->error( 'getUploadStash(): failed to create User:DownloadBookStash.' );
 		}
 
-		return MediaWikiServices::getInstance()->getRepoGroup()->getLocalRepo()->getUploadStash( $user );
+		// In MediaWiki 1.35, we use RepoGroup directly
+		return RepoGroup::singleton()->getLocalRepo()->getUploadStash( $user );
 	}
 
 	/**
@@ -279,7 +284,7 @@ class BookRenderingTask {
 			}
 
 			// Add parsed HTML of this article
-			$page = MediaWikiServices::getInstance()->getWikiPageFactory()->newFromTitle( $title );
+			$page = WikiPage::factory( $title );
 			$content = $page->getContent();
 			if ( !$content ) {
 				// Ignore nonexistent pages, etc.
@@ -314,7 +319,7 @@ class BookRenderingTask {
 				}
 			}
 
-			$localParser = MediaWikiServices::getInstance()->getParser();
+			$localParser = MediaWikiServices::getInstance()->getParser()->getFreshParser();
 			$popts = RequestContext::getMain()->getOutput()->parserOptions();
 			$pout = $localParser->parse(
 				$content->getText(),
